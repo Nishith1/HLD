@@ -1,0 +1,74 @@
+Subject: Request to Set Up GitHub Branch Protection, Code Review, and Merge Rules for Optimus Repositories
+
+Hi [Team / GitHub Admin Team],
+
+I hope you’re doing well.
+
+We’ve initiated development on a new platform under the Optimus File Processor project. There are multiple repositories under this project that will be actively developed and maintained by a cross-functional team including leads, managers, and developers.
+
+To ensure code quality, compliance, and audit traceability in line with JPMorgan’s enterprise engineering standards, I’d like to request the following GitHub guardrails to be set up across these repositories.
+
+Repositories:
+- optimus-orchestrator
+- optimus-transformer
+- optimus-partitioner
+- optimus-processor
+- optimus-db-writer
+- optimus-notification
+
+Branch Protection Rules (for `main`, `develop`, and `release/*`):
+
+| Rule Description                                      | Value / Setting                                           |
+|-------------------------------------------------------|-----------------------------------------------------------|
+| Require pull request reviews before merging           | Yes (minimum 2 reviewers)                                 |
+| Require review from CODEOWNERS                        | Yes (enforced through .github/CODEOWNERS)                 |
+| Require status checks to pass before merging          | Yes (build, unit test, sonar scan, etc.)                  |
+| Require branches to be up-to-date before merging      | Yes                                                       |
+| Require signed commits                                | Yes                                                       |
+| Do not allow force pushes                             | Yes                                                       |
+| Do not allow branch deletions                         | Yes                                                       |
+| Restrict who can push to protected branches           | Yes (see list below)                                      |
+
+Push Access to `main` and `release/*` (Leads + Managers only):
+
+| Name            | GitHub ID           | Role                |
+|-----------------|----------------------|---------------------|
+| Nishith Kumar   | @imnishith           | Lead Engineer       |
+| Lead 2          | @lead2-gh-id         | Lead Engineer       |
+| Manager 1       | @manager1-gh-id      | Engineering Manager |
+| Manager 2       | @manager2-gh-id      | Engineering Manager |
+
+All developers should be restricted from direct push/merge access to `main`, `develop`, or `release/*` branches.
+
+CODEOWNERS Setup (PR Reviewer Enforcement)
+
+Please configure .github/CODEOWNERS in each repo. Example:
+
+# .github/CODEOWNERS
+/src/orchestrator/      @imnishith @lead2-gh-id
+/src/transformer/       @lead2-gh-id
+/infrastructure/        @manager1-gh-id
+
+This ensures reviews from appropriate code owners are mandatory for every pull request.
+
+Pull Request & Merge Guard Rules
+
+- Require at least 2 approvals per pull request  
+- Dismiss stale reviews if new commits are pushed  
+- Restrict who can dismiss reviews (only admins)  
+- Enforce all CI checks as required status checks before merge  
+- Enable auto-merge (optional) for fully approved and CI-passed PRs
+
+Status Checks to Enforce Before Merge:
+
+| Check Name            | Description                        |
+|------------------------|------------------------------------|
+| build-check           | Compile and dependency verification |
+| unit-test             | Runs unit tests                    |
+| sonar-scan            | Static code analysis               |
+| secret-scan           | Detects secrets and keys           |
+| schema-validation     | DB schema and entity validation    |
+
+Please mark these as required status checks in branch protection settings.
+
+Please let me know once this setup is complete, or if you need any clarifications or additional inputs.
