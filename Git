@@ -1,74 +1,95 @@
-Subject: Request to Set Up GitHub Branch Protection, Code Review, and Merge Rules for Optimus Repositories
+partition_job_info
 
-Hi [Team / GitHub Admin Team],
+CREATE TABLE partition_job_info (
+  partition_job_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  file_id                UUID NOT NULL,                     -- Refers to source file ID from orchestrator
+  input_file_name        VARCHAR(255) NOT NULL,
+  input_file_path        TEXT NOT NULL,                     -- S3 or GCS path
+  partition_strategy     VARCHAR(20) NOT NULL,              -- RECORDS / SIZE / CUSTOM
+  partition_config       JSONB NOT NULL,                    -- e.g. {"type": "RECORDS", "batchSize": 10000}
+  total_partitions       INT DEFAULT 0,
+  total_records_estimate BIGINT,
+  status                 VARCHAR(20) NOT NULL DEFAULT 'STARTED',  -- STARTED / COMPLETED / FAILED
+  error_message          TEXT,
+  triggered_by           VARCHAR(100),
+  created_at             TIMESTAMP DEFAULT current_timestamp,
+  updated_at             TIMESTAMP DEFAULT current_timestamp
+);
 
-I hope you’re doing well.
 
-We’ve initiated development on a new platform under the Optimus File Processor project. There are multiple repositories under this project that will be actively developed and maintained by a cross-functional team including leads, managers, and developers.
 
-To ensure code quality, compliance, and audit traceability in line with JPMorgan’s enterprise engineering standards, I’d like to request the following GitHub guardrails to be set up across these repositories.
+partition_metadata
 
-Repositories:
-- optimus-orchestrator
-- optimus-transformer
-- optimus-partitioner
-- optimus-processor
-- optimus-db-writer
-- optimus-notification
+CREATE TABLE partition_metadata (
+  partition_id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  partition_job_id       UUID NOT NULL REFERENCES partition_job_info(partition_job_id),
+  partition_number       INT NOT NULL,                      -- e.g. 1, 2, 3...
+  record_count           INT NOT NULL,
+  output_file_name       VARCHAR(255) NOT NULL,
+  output_file_path       TEXT NOT NULL,                     -- S3 path: e.g. s3://bucket/file_chunk_01.json
+  checksum               VARCHAR(64),                       -- Optional: SHA-256/MD5 hash
+  created_at             TIMESTAMP DEFAULT current_timestamp
+);
 
-Branch Protection Rules (for `main`, `develop`, and `release/*`):
 
-| Rule Description                                      | Value / Setting                                           |
-|-------------------------------------------------------|-----------------------------------------------------------|
-| Require pull request reviews before merging           | Yes (minimum 2 reviewers)                                 |
-| Require review from CODEOWNERS                        | Yes (enforced through .github/CODEOWNERS)                 |
-| Require status checks to pass before merging          | Yes (build, unit test, sonar scan, etc.)                  |
-| Require branches to be up-to-date before merging      | Yes                                                       |
-| Require signed commits                                | Yes                                                       |
-| Do not allow force pushes                             | Yes                                                       |
-| Do not allow branch deletions                         | Yes                                                       |
-| Restrict who can push to protected branches           | Yes (see list below)                                      |
 
-Push Access to `main` and `release/*` (Leads + Managers only):
+partition_job_id	file_id	input_file_name	input_file_path	partition_strategy	partition_config	total_partitions	total_records_estimate	status	error_message	triggered_by	created_at	updated_at
+1a3e2fa5-80f0-49fc-b23f-c99c245f9d21	751e8fd2-5e0e-4141-8ec7-5e2d85f05d02	email_updates.json	s3://client-input/preferences/email_updates.json	RECORDS	{"type": "RECORDS", "batchSize": 10000}	10	100000	COMPLETED	NULL	orchestrator	2025-08-07 08:00:00	2025-08-07 08:18:00
 
-| Name            | GitHub ID           | Role                |
-|-----------------|----------------------|---------------------|
-| Nishith Kumar   | @imnishith           | Lead Engineer       |
-| Lead 2          | @lead2-gh-id         | Lead Engineer       |
-| Manager 1       | @manager1-gh-id      | Engineering Manager |
-| Manager 2       | @manager2-gh-id      | Engineering Manager |
 
-All developers should be restricted from direct push/merge access to `main`, `develop`, or `release/*` branches.
 
-CODEOWNERS Setup (PR Reviewer Enforcement)
+partition_metadata 
 
-Please configure .github/CODEOWNERS in each repo. Example:
+partition_id	partition_job_id	partition_number	record_count	output_file_name	output_file_path	checksum	created_at
+73479c88-130e-42a7-9f52-7dc1e9d8d82b	1a3e2fa5-80f0-49fc-b23f-c99c245f9d21	1	10000	email_updates_chunk_1.json	s3://client-output/partitioned/email_updates_chunk_1.json	6e20b5c1183e67df876ef9c144e743b3	2025-08-07 08:01:30
+b92a4e8d-4e2d-4eec-b7fd-fb9f9fa4dcb1	1a3e2fa5-80f0-49fc-b23f-c99c245f9d21	2	10000	email_updates_chunk_2.json	s3://client-output/partitioned/email_updates_chunk_2.json	2a8d7c7d5091a3fc4a12b1a18e94f09d	2025-08-07 08:02:10
+a63eae1b-8454-4897-a91a-c292a2b5d4b9	1a3e2fa5-80f0-49fc-b23f-c99c245f9d21	3	10000	email_updates_chunk_3.json	s3://client-output/partitioned/email_updates_chunk_3.json	87ac5d504f6edec2ecbbd3b4f6375892	2025-08-07 08:02:55
 
-# .github/CODEOWNERS
-/src/orchestrator/      @imnishith @lead2-gh-id
-/src/transformer/       @lead2-gh-id
-/infrastructure/        @manager1-gh-id
 
-This ensures reviews from appropriate code owners are mandatory for every pull request.
+transform_job_info
 
-Pull Request & Merge Guard Rules
+CREATE TABLE transform_job_info (
+  transform_job_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  partition_job_id       UUID NOT NULL,                       -- FK to partition_job_info
+  input_file_name        VARCHAR(255) NOT NULL,
+  input_file_path        TEXT NOT NULL,                       -- Partitioned input path
+  transformation_config  JSONB NOT NULL,                      -- Mapping, formatting, rules, etc.
+  total_chunks           INT,
+  total_records_input    BIGINT,
+  total_records_output   BIGINT,
+  failed_transform_count INT DEFAULT 0,
+  status                 VARCHAR(20) DEFAULT 'STARTED',       -- STARTED / COMPLETED / FAILED
+  error_message          TEXT,
+  triggered_by           VARCHAR(100),
+  created_at             TIMESTAMP DEFAULT current_timestamp,
+  updated_at             TIMESTAMP DEFAULT current_timestamp
+);
 
-- Require at least 2 approvals per pull request  
-- Dismiss stale reviews if new commits are pushed  
-- Restrict who can dismiss reviews (only admins)  
-- Enforce all CI checks as required status checks before merge  
-- Enable auto-merge (optional) for fully approved and CI-passed PRs
 
-Status Checks to Enforce Before Merge:
 
-| Check Name            | Description                        |
-|------------------------|------------------------------------|
-| build-check           | Compile and dependency verification |
-| unit-test             | Runs unit tests                    |
-| sonar-scan            | Static code analysis               |
-| secret-scan           | Detects secrets and keys           |
-| schema-validation     | DB schema and entity validation    |
+CREATE TABLE transform_chunk_metadata (
+  transformed_chunk_id   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  transform_job_id       UUID NOT NULL REFERENCES transform_job_info(transform_job_id),
+  chunk_number           INT NOT NULL,
+  input_chunk_path       TEXT NOT NULL,
+  output_chunk_path      TEXT NOT NULL,
+  transformed_record_count INT NOT NULL,
+  failed_record_count    INT DEFAULT 0,
+  output_format          VARCHAR(20),                          -- e.g., JSON, CSV
+  schema_version         VARCHAR(20),
+  created_at             TIMESTAMP DEFAULT current_timestamp
+);
 
-Please mark these as required status checks in branch protection settings.
 
-Please let me know once this setup is complete, or if you need any clarifications or additional inputs.
+transform_job_id	partition_job_id	input_file_name	input_file_path	transformation_config	total_chunks	total_records_input	total_records_output	failed_transform_count	status	error_message	triggered_by	created_at	updated_at
+e88f52bc-89c6-4a76-9b2f-8e21e59d71f7	1a3e2fa5-80f0-49fc-b23f-c99c245f9d21	email_updates.json	s3://client-output/partitioned/email_updates_chunk_*.json	{"mapping":{"emailId":"email","custId":"customerId"},"formatting":{"date":"dd-MM-yyyy"}}	10	100000	98500	1500	COMPLETED	NULL	transformer	2025-08-07 08:20:00	2025-08-07 08:40:00
+
+
+
+transform_chunk_metadata 
+
+transformed_chunk_id	transform_job_id	chunk_number	input_chunk_path	output_chunk_path	transformed_record_count	failed_record_count	output_format	schema_version	created_at
+94c2e905-8e7f-4a4e-99a3-5c01fc187d38	e88f52bc-89c6-4a76-9b2f-8e21e59d71f7	1	s3://client-output/partitioned/email_updates_chunk_1.json	s3://client-output/transformed/email_updates_chunk_1.json	9850	150	JSON	v1.0	2025-08-07 08:22:10
+af8b8b66-3d7f-4b6e-9d1f-3a9ad983d8a1	e88f52bc-89c6-4a76-9b2f-8e21e59d71f7	2	s3://client-output/partitioned/email_updates_chunk_2.json	s3://client-output/transformed/email_updates_chunk_2.json	9860	140	JSON	v1.0	2025-08-07 08:22:45
+bcb8749c-d177-4e65-a055-3b13e80fbd0b	e88f52bc-89c6-4a76-9b2f-8e21e59d71f7	3	s3://client-output/partitioned/email_updates_chunk_3.json	s3://client-output/transformed/email_updates_chunk_3.json	9875	125	JSON	v1.0	2025-08-07 08:23:10
+
